@@ -12,3 +12,10 @@ platforms           darwin
 
 maintainers         me
 
+master_sites        sourceforge:project/mingw-w64/mingw-w64/mingw-w64-release/
+
+distfiles           ${name}-v${version}.tar.bz2
+
+checksums           rmd160 647e86a10b928bc3eb17270dabf708947638e629 \
+                    sha256 ece7a7e7e1ab5e25d5ce469f8e4de7223696146fffa71c16e2a9b017d0e017d2
+                    
