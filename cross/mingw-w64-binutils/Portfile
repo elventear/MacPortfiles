@@ -30,20 +30,29 @@ depends_lib         port:gettext
 
 set crossgcc-target ${_arch}-w64-mingw32
 
+patchfiles          patch-fix_names.diff
+patch.pre_args      -p1 
+
+build.dir           ${workpath}/build
 
 pre-configure       { system "cd ${workpath} && mkdir -p build"}
 configure.dir       ${workpath}/build
 configure.cmd       ${worksrcpath}/configure
-configure.args      --infodir='${prefix}/share/info/${crossgcc-target}' --target=${crossgcc-target} \
-                    --program-prefix=${crossgcc-target}- --mandir='${prefix}/share/man' \
-                    --disable-nls --disable-multilib --disable-werror \
-                    --localedir='${prefix}/share/locale/${crossgcc-target}'
+configure.args      --target=${crossgcc-target} \
+                    --program-prefix=${crossgcc-target}- \
+                    --disable-werror 
+
+post-patch {
+    system "cd ${worksrcpath} 
+        for f in \$(grep -lR _MACPORTS_CROSSGCC_ *); do
+            LANG=C LC_ALL=C sed -i -e 's|_MACPORTS_CROSSGCC_|${crossgcc-target}|g' \$f  
+        done"
+}
 
 if {${os.platform} eq "darwin" && ${build_arch} ne ""} {
     configure.args-append --build=${build_arch}-apple-darwin${os.major}
 }
 
-build.dir           ${workpath}/build
 
 destroot.violate_mtree  yes
 
