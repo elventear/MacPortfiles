@@ -1,0 +1,50 @@
+# -*- coding: utf-8; mode: tcl; tab-width: 4; indent-tabs-mode: nil; c-basic-offset: 4 -*- vim:fenc=utf-8:ft=tcl:et:sw=4:ts=4:sts=4
+# $Id$
+PortSystem          1.0
+
+set _arch           x86_64    
+set _name           binutils
+set _prefix         mingw-w64
+
+name                ${_arch}-${_prefix}-${_name}
+version             2.24
+categories          cross devel
+maintainers         openmaintainer
+
+description         Binutils for ${_arch}-${_prefix} cross development
+long_description    ${_prefix} development toolchain ("binutils") \
+                    for ${_arch}-${_prefix} (Windows) cross development.
+homepage            http://www.gnu.org/software/binutils/
+license             gpl
+
+platforms           darwin
+master_sites        gnu:${_name}/${_name}-${version}.tar.bz2
+distname            ${_name}-${version}
+worksrcdir          ${_name}-${version}
+use_bzip2           yes
+
+checksums           rmd160 b4aa3ea5ba9d0d9f817b2cf136e7f911f692af8d \
+                    sha256 e5e8c5be9664e7f7f96e0d09919110ab5ad597794f5b1809871177a0f0f14137
+
+depends_lib         port:gettext
+
+set crossgcc-target ${_arch}-w64-mingw32
+
+
+pre-configure       { system "cd ${workpath} && mkdir -p build"}
+configure.dir       ${workpath}/build
+configure.cmd       ${worksrcpath}/configure
+configure.args      --infodir='${prefix}/share/info/${crossgcc-target}' --target=${crossgcc-target} \
+                    --program-prefix=${crossgcc-target}- --mandir='${prefix}/share/man' \
+                    --disable-nls --disable-multilib --disable-werror \
+                    --localedir='${prefix}/share/locale/${crossgcc-target}'
+
+if {${os.platform} eq "darwin" && ${build_arch} ne ""} {
+    configure.args-append --build=${build_arch}-apple-darwin${os.major}
+}
+
+build.dir           ${workpath}/build
+
+destroot.violate_mtree  yes
+
+
