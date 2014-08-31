@@ -35,12 +35,14 @@ patch.pre_args      -p1
 
 build.dir           ${workpath}/build
 
-pre-configure       { system "cd ${workpath} && mkdir -p build"}
-configure.dir       ${workpath}/build
+pre-configure       { system "cd ${workpath} && mkdir -p build"}vconfigure.dir       ${workpath}/build
 configure.cmd       ${worksrcpath}/configure
 configure.args      --target=${crossgcc-target} \
                     --program-prefix=${crossgcc-target}- \
                     --disable-werror 
+if {${os.platform} eq "darwin" && ${build_arch} ne ""} {
+    configure.args-append --build=${build_arch}-apple-darwin${os.major}
+}
 
 post-patch {
     system "cd ${worksrcpath} 
@@ -48,11 +50,6 @@ post-patch {
             LANG=C LC_ALL=C sed -i -e 's|_MACPORTS_CROSSGCC_|${crossgcc-target}|g' \$f  
         done"
 }
-
-if {${os.platform} eq "darwin" && ${build_arch} ne ""} {
-    configure.args-append --build=${build_arch}-apple-darwin${os.major}
-}
-
 
 destroot.violate_mtree  yes
 
