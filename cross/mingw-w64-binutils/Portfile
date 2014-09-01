@@ -5,6 +5,7 @@ PortSystem          1.0
 set _arch           x86_64    
 set _name           binutils
 set _prefix         mingw-w64
+set crossgcc-target ${_arch}-w64-mingw32
 
 name                ${_arch}-${_prefix}-${_name}
 version             2.24
@@ -18,6 +19,9 @@ homepage            http://www.gnu.org/software/binutils/
 license             gpl
 
 platforms           darwin
+
+depends_lib         port:gettext
+
 master_sites        gnu:${_name}/${_name}-${version}.tar.bz2
 distname            ${_name}-${version}
 worksrcdir          ${_name}-${version}
@@ -26,16 +30,18 @@ use_bzip2           yes
 checksums           rmd160 b4aa3ea5ba9d0d9f817b2cf136e7f911f692af8d \
                     sha256 e5e8c5be9664e7f7f96e0d09919110ab5ad597794f5b1809871177a0f0f14137
 
-depends_lib         port:gettext
-
-set crossgcc-target ${_arch}-w64-mingw32
-
 patchfiles          patch-fix_names.diff
 patch.pre_args      -p1 
+post-patch {
+    system "cd ${worksrcpath} 
+        for f in \$(grep -lR _MACPORTS_CROSSGCC_ *); do
+            LANG=C LC_ALL=C sed -i -e 's|_MACPORTS_CROSSGCC_|${crossgcc-target}|g' \$f  
+        done"
+}
 
-build.dir           ${workpath}/build
 
-pre-configure       { system "cd ${workpath} && mkdir -p build"}vconfigure.dir       ${workpath}/build
+pre-configure       { system "cd ${workpath} && mkdir -p build"}
+configure.dir       ${workpath}/build
 configure.cmd       ${worksrcpath}/configure
 configure.args      --target=${crossgcc-target} \
                     --program-prefix=${crossgcc-target}- \
@@ -44,12 +50,8 @@ if {${os.platform} eq "darwin" && ${build_arch} ne ""} {
     configure.args-append --build=${build_arch}-apple-darwin${os.major}
 }
 
-post-patch {
-    system "cd ${worksrcpath} 
-        for f in \$(grep -lR _MACPORTS_CROSSGCC_ *); do
-            LANG=C LC_ALL=C sed -i -e 's|_MACPORTS_CROSSGCC_|${crossgcc-target}|g' \$f  
-        done"
-}
+
+build.dir           ${workpath}/build
 
 destroot.violate_mtree  yes
 
