@@ -1,0 +1,35 @@
+# -*- coding: utf-8; mode: tcl; tab-width: 4; indent-tabs-mode: nil; c-basic-offset: 4 -*- vim:fenc=utf-8:ft=tcl:et:sw=4:ts=4:sts=4
+# $Id$
+
+PortSystem              1.0
+PortGroup               github 1.0
+
+github.setup            rogual neovim-dot-app 097ea8d5a1c5e8e1664f3b1d40d80f89936ea218
+version                 20160112
+fetch.type              git
+revision                1
+categories              editors
+platforms               darwin
+maintainers             barbe.pe:pepe
+license                 GPL-3
+homepage                https://github.com/rogual/neovim-dot-app
+
+description             OS X GUI for Neovim
+long_description        OS X GUI for Neovim
+
+depends_build           port:scons
+
+depends_lib             port:msgpack1 \
+                        port:neovim
+
+use_configure           no
+
+build.env-append        NVIM=${prefix}/bin/nvim
+
+test.run                yes
+test.cmd                build/test
+
+destroot {
+    copy ${worksrcpath}/build/Neovim.app ${destroot}${applications_dir}
+    copy ${worksrcpath}/gnvim ${destroot}${prefix}/bin 
+}
