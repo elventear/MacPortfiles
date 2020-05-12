@@ -1,0 +1,43 @@
+# -*- coding: utf-8; mode: tcl; tab-width: 4; indent-tabs-mode: nil; c-basic-offset: 4 -*- vim:fenc=utf-8:ft=tcl:et:sw=4:ts=4:sts=4
+
+PortSystem          1.0
+PortGroup           github 1.0
+
+github.setup        gravitational teleport 4.2.9 v
+
+homepage            http://gravitational.com/teleport/
+categories          net
+maintainers         { gmail.com:graemelawes @gclawes } openmaintainer
+description         Teleport SSH server and Certificate Authority
+long_description    Teleport is a modern SSH server and CA for managing clusters \
+                    that provides secure login with certificate-based access, \
+                    2-factor authentication, session logging and replay, \
+                    integration with Google Apps and other OAuth identity providers, \
+                    and a Web UI.  Built on the Golang SSH library, and compatible with OpenSSH
+license             Apache-2
+
+checksums           rmd160  8e9962b43ec7839930fd04d995a86ace7d26afd0 \
+                    sha256  54ca208030256421d02231cf14f0d278ad709ce342c7c56bc692dc0f7b843d18 \
+                    size    55842436
+
+depends_lib         port:go port:zip
+platforms           darwin
+use_configure       no
+worksrcdir          src/github.com/${github.author}/${github.project}
+
+build.env-append    GOPATH=${workpath}
+build.target        full
+use_parallel_build  no
+
+post-extract {
+    xinstall -d ${workpath}/src/github.com/${github.author}
+    move ${workpath}/${name}-${github.version} \
+        ${worksrcpath}
+}
+
+destroot {
+    foreach i { tctl tsh teleport } {
+        xinstall ${worksrcpath}/build/${i} ${destroot}${prefix}/bin
+    }
+}
+
