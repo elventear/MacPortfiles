@@ -3,7 +3,7 @@
 PortSystem          1.0
 PortGroup           github 1.0
 
-github.setup        gravitational teleport 4.2.9 v
+github.setup        gravitational teleport 4.3.2 v
 
 homepage            http://gravitational.com/teleport/
 categories          net
@@ -18,7 +18,7 @@ license             Apache-2
 
 checksums           rmd160  8e9962b43ec7839930fd04d995a86ace7d26afd0 \
                     sha256  54ca208030256421d02231cf14f0d278ad709ce342c7c56bc692dc0f7b843d18 \
-                    size    55842436
+                    size    54652247
 
 depends_lib         port:go port:zip
 platforms           darwin
