@@ -1,0 +1,56 @@
+# -*- coding: utf-8; mode: tcl; tab-width: 4; indent-tabs-mode: nil; c-basic-offset: 4 -*- vim:fenc=utf-8:ft=tcl:et:sw=4:ts=4:sts=4
+PortSystem              1.0
+categories              sysutils
+platforms               darwin
+maintainers             {@elventear antropoide.net:dev} openmaintainer
+license                 MIT
+description             Tool to highlight focused window
+long_description        Port of the old border system that used to be implemented in limelight v2.4.3.
+
+PortGroup               makefile 1.0
+PortGroup               xcodeversion 1.0
+PortGroup               github 1.0
+github.setup            koekeishiya limelight 813efae664c1498c78f95f771cbb47b27b444fcb
+version                 20210217
+
+checksums               rmd160  f00f38768f45eeb2ecd4b5b87a4ee1130aae7dcf \
+                        sha256  ff05fbf938c8c1569b1db9e9b3e80e5f5e655c484c0d18f8b974ba58f534615d \
+                        size    28314
+
+set limelight.plist     ${workpath}/org.macports.limelight.plist
+
+post-patch {
+    # Fill in startup plist template
+    copy -- ${filespath}/org.macports.limelight.plist.in ${limelight.plist}
+    reinplace "s|@PREFIX@|${prefix}|g" ${limelight.plist}
+}
+
+destroot {
+    xinstall -m 755 ${worksrcpath}/bin/limelight ${destroot}${prefix}/bin/limelight
+
+    # Install our custom plist
+    set launchd_dir ${prefix}/etc/${startupitem.location}/${startupitem.uniquename}
+    xinstall -m 755 -d ${destroot}/${launchd_dir}
+    xinstall -m 644 ${limelight.plist} ${destroot}/${launchd_dir}/${startupitem.plist}
+
+    if {[getuid] == 0 && ${startupitem.install} ne "no"} {
+        file mkdir ${destroot}/Library/${startupitem.location}
+        ln -sf ${launchd_dir}/${startupitem.plist} ${destroot}/Library/${startupitem.location}
+    } else {
+        ln -sf ${launchd_dir}/${startupitem.plist} ${destroot}${prefix}/etc/${startupitem.location}
+    }
+}
+
+set minxcodever 9.3
+if {([vercmp $xcodeversion ${minxcodever}] < 0)} {
+    known_fail yes
+    pre-fetch {
+        ui_error "${name} ${version} requires Xcode ${minxcodever} or greater to build."
+        return -code error "incompatible Xcode version"
+    }
+}
+
+startupitem.create      no
+startupitem.autostart   no
+startupitem.location    LaunchAgents
+startupitem.executable  ${prefix}/bin/limelight
