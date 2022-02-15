@@ -1,0 +1,46 @@
+--- makefile.orig
++++ makefile
+@@ -1,6 +1,6 @@
+ FRAMEWORK_PATH = -F/System/Library/PrivateFrameworks
+ FRAMEWORK      = -framework Carbon -framework Cocoa -framework CoreServices -framework SkyLight -framework ScriptingBridge
+-BUILD_FLAGS    = -std=c99 -Wall -g -O0 -fvisibility=hidden -mmacosx-version-min=10.13 -fno-objc-arc -arch x86_64 -arch arm64
++CFLAGS         += -std=c99 -Wall -DNDEBUG -fvisibility=hidden
+ BUILD_PATH     = ./bin
+ DOC_PATH       = ./doc
+ SCRIPT_PATH    = ./scripts
+@@ -16,13 +16,13 @@ BINS           = $(BUILD_PATH)/yabai
+ 
+ all: clean-build $(BINS)
+ 
+-install: BUILD_FLAGS=-std=c99 -Wall -DNDEBUG -O2 -fvisibility=hidden -mmacosx-version-min=10.13 -fno-objc-arc -arch x86_64 -arch arm64
+ install: clean-build $(BINS)
++	cp $(BINS) $(DESTDIR)/$(PREFIX)/$(BINS)
+ 
+ $(OSAX_SRC): $(OSAX_PATH)/loader.m $(OSAX_PATH)/payload.m
+-	xcrun clang $(OSAX_PATH)/loader.m -shared -O2 -mmacosx-version-min=10.13 -arch x86_64 -o $(OSAX_PATH)/loader -framework Foundation
+-	xcrun clang $(OSAX_PATH)/payload.m -shared -fPIC -O2 -mmacosx-version-min=10.13 -arch x86_64 -arch arm64e -o $(OSAX_PATH)/payload -framework Foundation -framework Carbon
+-	xcrun clang $(OSAX_PATH)/mach_loader.m -O2 -mmacosx-version-min=10.13 -arch x86_64 -arch arm64e -o $(OSAX_PATH)/mach_loader -framework Cocoa
++	$(CC) $(OSAX_PATH)/loader.m $(CFLAGS) -shared -o $(OSAX_PATH)/loader -framework Foundation
++	$(CC) $(OSAX_PATH)/payload.m $(CFLAGS) -shared -fPIC -o $(OSAX_PATH)/payload -framework Foundation -framework Carbon
++	$(CC) $(OSAX_PATH)/mach_loader.m $(CFLAGS) -shared -fPIC -o $(OSAX_PATH)/mach_bootstrap -framework Carbon -lpthread
+ 	xxd -i -a $(OSAX_PATH)/loader $(OSAX_PATH)/loader_bin.c
+ 	xxd -i -a $(OSAX_PATH)/payload $(OSAX_PATH)/payload_bin.c
+ 	xxd -i -a $(OSAX_PATH)/mach_loader $(OSAX_PATH)/mach_loader_bin.c
+@@ -56,4 +56,5 @@ clean: clean-build
+ 
+ $(BUILD_PATH)/yabai: $(YABAI_SRC)
+ 	mkdir -p $(BUILD_PATH)
+-	xcrun clang $^ $(BUILD_FLAGS) $(FRAMEWORK_PATH) $(FRAMEWORK) -o $@
++	$(CC) $^ $(CFLAGS) $(FRAMEWORK_PATH) $(FRAMEWORK) -o $@
++
+--- src/workspace.m.orig
++++ src/workspace.m
+@@ -106,7 +106,7 @@ int workspace_display_has_notch(uint32_t did)
+     if (__builtin_available(macos 12.0, *)) {
+         for (NSScreen *screen in [NSScreen screens]) {
+             if ([[[screen deviceDescription] objectForKey:@"NSScreenNumber"] unsignedIntValue] == did) {
+-                return screen.safeAreaInsets.top;
++                return 0;
+             }
+         }
+     }
