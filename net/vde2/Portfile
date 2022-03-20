@@ -1,0 +1,76 @@
+# -*- coding: utf-8; mode: tcl; tab-width: 4; indent-tabs-mode: nil; c-basic-offset: 4 -*- vim:fenc=utf-8:ft=tcl:et:sw=4:ts=4:sts=4
+
+PortSystem          1.0
+PortGroup           github 1.0
+
+name                vde2
+version             2.3.2
+revision            20211221
+categories          net
+platforms           darwin
+maintainers         {@elventear antropoide.net:dev} openmaintainer
+license             GPL-2 LGPL-2.1 BSD-old
+
+description         ethernet compliant virtual network
+
+long_description    VDE is an ethernet compliant virtual network that can be \
+                    spawned over a set of physical computer over the Internet.
+
+homepage            https://github.com/virtualsquare/vde-2
+
+github.setup        virtualsquare vde-2 506ce85cc11a105abba2acbd4dcf4de48c6fdf42
+
+checksums           rmd160  93cfd74cb9ed59844f907fd55e82785250ef815f \
+                    sha256  9de39ef4d8f13f666d39696311402f7a1b9d262c7ea1bd76ccc0655473f60e1b \
+                    size    234414
+
+use_autoreconf      yes
+
+default_variants    pcap
+
+configure.args      --disable-kernel-switch \
+                    --disable-experimental \
+                    --disable-tuntap \
+                    --disable-pcap \
+                    --disable-cryptcab \
+                    --disable-python
+
+# See https://github.com/virtualsquare/vde-2/issues/6
+use_parallel_build  no
+
+post-destroot {
+    set docdir ${destroot}${prefix}/share/doc/${name}
+    xinstall -d ${docdir}
+    xinstall -m 644 -W ${worksrcpath} \
+                    COPYING \
+                    COPYING.libvdeplug \
+                    Changelog \
+                    README \
+                    doc/README.UML \
+                    doc/README.VirtualBox \
+                    doc/README.bochs \
+                    doc/README.qemu \
+                    doc/README.slirpvde \
+                    doc/README.vde_over_ns \
+                    doc/freebsd_tap-HOWTO \
+                    doc/vde_autolink-HOWTO \
+                    doc/vdeqemu-HOWTO \
+                    ${docdir}
+}
+
+variant tuntap description {Enable support for TAP devices} {
+    depends_lib-append      port:tuntaposx
+    configure.args-replace  "s|--disable-tuntap|--enable-tuntap|"
+}
+
+variant pcap description {Enable support for packet capturing} {
+    depends_lib-append      port:libpcap
+    configure.args-replace  "s|--disable-pcap|--enable-pcap|"
+}
+
+variant experimental description {Enable support for experimental features} {
+    configure.args-replace  "s|--disable-experimental|--enable-experimental|"
+}
+
+livecheck.type      sourceforge
+livecheck.regex     "${name}-(\\d+\\.\\d+(\\.\\d+)?)${extract.suffix}"

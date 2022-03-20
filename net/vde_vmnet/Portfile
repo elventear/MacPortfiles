@@ -5,12 +5,13 @@ PortGroup           github 1.0
 
 categories          net
 description         vmnet.framework support for rootless QEMU
-github.setup        lima-vm vde_vmnet 0.5.2 v
 homepage            https://github.com/lima-vm/vde_vmnet
 license             APACHE
 long_description    vde_vmnet provides vmnet.framework support for VDE applications such as QEMU
 maintainers         {@elventear antropoide.net:dev} openmaintainer
 platforms           darwin
+
+github.setup        lima-vm vde_vmnet 0.5.2 v
 
 use_configure       no
 
