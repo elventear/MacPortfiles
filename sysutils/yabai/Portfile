@@ -4,9 +4,9 @@ PortGroup               github 1.0
 PortGroup               makefile 1.0
 PortGroup               xcodeversion 1.0
 
-github.setup            koekeishiya yabai 916d9133f9d13fb38678baa3d0adf3cfb9dff003
+github.setup            koekeishiya yabai a4030e771f76d4f135f5b830eedd7234592df51e
 version                 4.0.0
-revision                1
+revision                2
 
 categories              sysutils
 platforms               darwin
@@ -19,9 +19,9 @@ use_parallel_build      no
 
 set yabai.plist         ${workpath}/org.macports.yabai.plist
 
-checksums           rmd160  13d657ce53c0b9c68667fa5eea206b3f5e0673e9 \
-                    sha256  18c8dd313ed05e14d9097c5ea2487fe2e915c84556f44356868fa9ebef7de82b \
-                    size    1524594
+checksums           rmd160  ef5e71099d980787857b4f6291a543d3dd6a9e39 \
+                    sha256  4910516af9613a81dc52a2ce44003bc2e3a0327594d4acc3eb5c1f56547c2255 \
+                    size    1525737 
 
 build.cmd           make install
 
