@@ -4,7 +4,7 @@ PortSystem              1.0
 PortGroup               github 1.0
 PortGroup               makefile 1.0
 
-github.setup            koekeishiya yabai 7.1.15 v
+github.setup            koekeishiya yabai 7.1.23 v
 github.tarball_from     archive
 
 categories              sysutils
@@ -13,9 +13,9 @@ license                 MIT
 description             A tiling window manager for macOS based on binary space partitioning
 long_description        yabai is a window management utility that is designed to work as an extension to the built-in window manager of macOS.
 
-checksums           rmd160  975f0cc62be38cf1b8b2b7029b14896b999a6cc3 \
-                    sha256  3b07916b32f1f1488ff817b1f60559df8b9225a2d8e840edc5ebb10e3e1334f3 \
-                    size    1570025
+checksums               rmd160  43be47b08eeb84144cd59959374e962532dbe571 \
+                        sha256  cd66965bd7be543eefe4df353e617adcf558f69a0bc905b3e611303fd012e95d \
+                        size    1574550
 
 compiler.c_standard     2011
 
