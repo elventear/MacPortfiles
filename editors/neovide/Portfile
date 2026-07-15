@@ -1,0 +1,105 @@
+# -*- coding: utf-8; mode: tcl; tab-width: 4; indent-tabs-mode: nil; c-basic-offset: 4 -*- vim:fenc=utf-8:ft=tcl:et:sw=4:ts=4:sts=4
+
+# Installs the prebuilt, Developer-ID-signed app that upstream ships as the
+# recommended macOS distribution. (A from-source build would compile Skia and
+# vendor hundreds of Rust crates, both of which fight MacPorts' offline build
+# sandbox; the signed DMG is what neovide.dev recommends for end users.)
+PortSystem              1.0
+PortGroup               github 1.0
+
+github.setup            neovide neovide 0.16.2
+github.tarball_from     releases
+
+# Upstream app bundle is "Neovide.app"; the binary and MacPorts port are
+# lowercase "neovide".
+name                    neovide
+
+categories              editors
+maintainers             {bright.ai:pepe} openmaintainer
+license                 MIT
+description             No Nonsense Neovim Client in Rust
+long_description        Neovide is a simple, no-nonsense, cross-platform \
+                        graphical user interface for Neovim, written in Rust. \
+                        It adds features on top of the good parts of Neovim \
+                        such as smooth animations, ligatures, a blinking \
+                        cursor with particle effects, and Retina/HiDPI support.
+homepage                https://neovide.dev
+
+# Neovim is required at runtime; Neovide is a GUI front end that drives nvim.
+depends_run             port:neovim
+
+# Upstream ships a separate, single-architecture disk image per arch, so select
+# the distfile and its checksums based on the build architecture. The asset
+# names use "aarch64"/"x86_64" (Rust target triples).
+supported_archs         arm64 x86_64
+universal_variant       no
+
+if {${build_arch} eq "x86_64"} {
+    set dmg_arch        x86_64
+    checksums           rmd160  180ce634b62fcce705e016f8ac7b522db146e30f \
+                        sha256  e84f7e585a688ac29073927fedeb1ff40419a558fffd9c021cb14a29db10bb41 \
+                        size    12537129
+} else {
+    set dmg_arch        aarch64
+    checksums           rmd160  a3796946177196971dce50031af16078352b7c7b \
+                        sha256  5eb745ea7f20cf00491a8ffd8d793c6169ef1c6e1a0f75ae8be40571e65c6b26 \
+                        size    12141993
+}
+
+distname                Neovide-${dmg_arch}-apple-darwin
+extract.suffix          .dmg
+
+use_configure           no
+build                   {}
+
+set app_dir             /Applications/MacPorts/Neovide.app
+set mountpoint          ${workpath}/mnt
+
+# The distfile is a .dmg, which the default extractor cannot unpack. Mount it
+# with hdiutil, copy the app bundle out, and unmount.
+extract {
+    file mkdir ${mountpoint}
+    system -W ${workpath} "hdiutil attach -nobrowse -readonly \
+        -mountpoint ${mountpoint} ${distpath}/${distname}${extract.suffix}"
+    if {[catch {file copy ${mountpoint}/Neovide.app ${workpath}/Neovide.app} err]} {
+        catch {system "hdiutil detach ${mountpoint}"}
+        return -code error ${err}
+    }
+    system "hdiutil detach ${mountpoint}"
+}
+
+destroot {
+    # GUI application bundle
+    xinstall -d -m 0755 ${destroot}/Applications/MacPorts
+    file copy ${workpath}/Neovide.app ${destroot}${app_dir}
+
+    # CLI launcher: neovide is designed to be run from the terminal (it opens
+    # nvim in the shell's cwd; --fork detaches, --no-fork is the default). The
+    # binary is Developer-ID signed and loads no bundle resources beyond its
+    # icon, so a plain symlink works.
+    xinstall -d -m 0755 ${destroot}${prefix}/bin
+    ln -s ${app_dir}/Contents/MacOS/neovide ${destroot}${prefix}/bin/neovide
+}
+
+# The release asset is downloaded from the internet and therefore carries the
+# com.apple.quarantine attribute. Strip it so Gatekeeper allows the prebuilt
+# app to run.
+post-destroot {
+    fs-traverse fixfile ${destroot}${app_dir} {
+        if {![catch {exec xattr -l ${fixfile}} out] && ${out} ne ""} {
+            system "xattr -d com.apple.quarantine ${fixfile}"
+        }
+    }
+}
+
+notes "
+    Neovide is installed to:
+    * /Applications/MacPorts/Neovide.app
+
+    The command line launcher is available as:
+    * ${prefix}/bin/neovide
+
+    Run 'neovide' to open a window in the current directory, or 'neovide FILE'.
+    Use '--fork' to detach from the shell. See https://neovide.dev for the
+    configuration and command line reference.
+"
