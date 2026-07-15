@@ -1,0 +1,67 @@
+# -*- coding: utf-8; mode: tcl; tab-width: 4; indent-tabs-mode: nil; c-basic-offset: 4 -*- vim:fenc=utf-8:ft=tcl:et:sw=4:ts=4:sts=4
+
+# Based on https://github.com/FelixKratz/homebrew-formulae/blob/master/borders.rb
+PortSystem              1.0
+PortGroup               github 1.0
+PortGroup               makefile 1.0
+
+github.setup            FelixKratz JankyBorders 1.9.0 v
+github.tarball_from     archive
+
+# Upstream project is "JankyBorders"; the binary and Homebrew formula are
+# named "borders", which the MacPorts port matches.
+name                    borders
+
+categories              sysutils
+maintainers             {bright.ai:pepe} openmaintainer
+license                 GPL-3
+description             A window border system for macOS
+long_description        JankyBorders is a lightweight tool designed to add \
+                        colored borders to user windows on macOS 14.0 and \
+                        later. It enhances the window management experience \
+                        by visually highlighting the currently focused window \
+                        without relying on the accessibility API.
+homepage                https://github.com/FelixKratz/JankyBorders
+
+checksums               rmd160  4bdfb8b78763f20c748a66a2792aa07b5f4948c9 \
+                        sha256  70b5bff531b67a082cc0108d88a8355ba5e7c8326285533143c185efdf21769f \
+                        size    663629
+
+# The upstream makefile hardcodes "clang" and links against the private
+# SkyLight framework, so the system compiler is required.
+use_parallel_build      no
+
+# JankyBorders relies on private frameworks that require macOS 11 (Big Sur)
+# or later.
+if {${os.major} < 20} {
+    known_fail yes
+    pre-fetch {
+        ui_error "${name} ${version} requires macOS 11 (Big Sur) or later."
+        return -code error "incompatible macOS version"
+    }
+}
+
+# Adhoc code-sign the binary, mirroring the Homebrew formula's codesign step.
+post-build {
+    system -W ${worksrcpath} "codesign --force -s - bin/borders"
+}
+
+destroot {
+    xinstall -m 0755 ${worksrcpath}/bin/borders ${destroot}${prefix}/bin/borders
+
+    xinstall -d -m 0755 ${destroot}${prefix}/share/man/man1
+    xinstall -m 0444 ${worksrcpath}/docs/borders.1 \
+        ${destroot}${prefix}/share/man/man1/borders.1
+}
+
+notes "
+    To start ${name}, run:
+    * ${prefix}/bin/borders
+
+    Command line options may be passed to customize the border color, width,
+    and style, e.g.:
+    * borders active_color=0xffe1e3e4 inactive_color=0xff494d64 width=5.0
+
+    See `man borders` and https://github.com/FelixKratz/JankyBorders for the
+    full list of configuration options.
+"

@@ -1,0 +1,90 @@
+# -*- coding: utf-8; mode: tcl; tab-width: 4; indent-tabs-mode: nil; c-basic-offset: 4 -*- vim:fenc=utf-8:ft=tcl:et:sw=4:ts=4:sts=4
+
+# Based on https://github.com/nikitabobko/homebrew-tap/blob/master/Casks/aerospace.rb
+PortSystem              1.0
+PortGroup               github 1.0
+
+github.setup            nikitabobko AeroSpace 0.21.2-Beta v
+github.tarball_from     releases
+
+# Upstream project/tag is "AeroSpace"; the MacPorts port is lowercase.
+name                    aerospace
+distname                ${github.project}-v${github.version}
+
+categories              sysutils
+maintainers             {@TheKevJames thekev.in:macports} openmaintainer
+license                 MIT
+description             AeroSpace is an i3-like tiling window manager for macOS
+long_description        {*}${description}. It is designed around the notion of \
+                        workspaces instead of spaces, uses tree-based tiling, \
+                        and is fully controllable via a CLI and text config file.
+homepage                https://github.com/nikitabobko/AeroSpace
+
+checksums               rmd160  f47d54a1563c053730c717ea9628c4855cae38a7 \
+                        sha256  5fb8dc153a131f0ae562eddcbbbc2bdade2a4fc3959df5c95eda0919bfad8af2 \
+                        size    7944156
+
+use_zip                 yes
+use_configure           no
+build                   {}
+
+set pkg_workpath        ${workpath}/${github.project}-v${github.version}
+
+# AeroSpace ships a prebuilt universal binary. Upstream requires macOS 13
+# (Ventura) or later, matching the Homebrew cask's `depends_on macos: :ventura`.
+if {${os.major} < 22} {
+    known_fail yes
+    pre-fetch {
+        ui_error "${name} ${version} requires macOS 13 (Ventura) or later."
+        return -code error "incompatible macOS version"
+    }
+}
+
+destroot {
+    # GUI application bundle
+    file copy ${pkg_workpath}/AeroSpace.app ${destroot}/Applications/MacPorts/AeroSpace.app
+
+    # CLI binary
+    xinstall -m 0755 ${pkg_workpath}/bin/aerospace ${destroot}${prefix}/bin
+
+    # Shell completions
+    xinstall -d -m 0755 ${destroot}${prefix}/share/zsh/site-functions
+    xinstall -d -m 0755 ${destroot}${prefix}/share/bash-completion/completions
+    xinstall -d -m 0755 ${destroot}${prefix}/share/fish/vendor_completions.d
+
+    xinstall -m 0644 ${pkg_workpath}/shell-completion/zsh/_aerospace \
+        ${destroot}${prefix}/share/zsh/site-functions/_aerospace
+    xinstall -m 0644 ${pkg_workpath}/shell-completion/bash/aerospace \
+        ${destroot}${prefix}/share/bash-completion/completions/aerospace
+    xinstall -m 0644 ${pkg_workpath}/shell-completion/fish/aerospace.fish \
+        ${destroot}${prefix}/share/fish/vendor_completions.d/aerospace.fish
+
+    # Manpages
+    xinstall -d -m 0755 ${destroot}${prefix}/share/man/man1
+    xinstall -m 0444 {*}[glob ${pkg_workpath}/manpage/*.1] \
+        ${destroot}${prefix}/share/man/man1
+}
+
+# The release assets are downloaded from the internet and therefore carry the
+# com.apple.quarantine attribute. Strip it so Gatekeeper allows the prebuilt
+# binary and app to run (mirrors the Homebrew cask's postflight step).
+post-destroot {
+    fs-traverse fixfile ${destroot} {
+        if {![catch {exec xattr -l ${fixfile}} out] && ${out} ne ""} {
+            system "xattr -d com.apple.quarantine ${fixfile}"
+        }
+    }
+}
+
+notes "
+    AeroSpace is installed to:
+    * /Applications/MacPorts/AeroSpace.app
+
+    On first launch you must grant Accessibility permission:
+    * System Settings > Privacy & Security > Accessibility
+
+    Configure AeroSpace by copying the default config and editing it:
+    * ~/.aerospace.toml
+    See `man aerospace` and https://nikitabobko.github.io/AeroSpace/guide
+    for configuration and CLI details.
+"

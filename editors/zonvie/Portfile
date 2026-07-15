@@ -1,0 +1,185 @@
+# -*- coding: utf-8; mode: tcl; tab-width: 4; indent-tabs-mode: nil; c-basic-offset: 4 -*- vim:fenc=utf-8:ft=tcl:et:sw=4:ts=4:sts=4
+
+PortSystem              1.0
+PortGroup               github 1.0
+
+# Built from a pinned main-branch commit: the tagged 0.3.26 release targets an
+# older Zig 0.16.0 snapshot whose build API is incompatible with MacPorts'
+# zig 0.16.0, while main has been migrated to the current API (module-based
+# linkLibrary, b.runAllowFail). Bump the commit/version together when updating.
+set commit              0b710eadd624ee2763f9fbd6eed5e0ba64811897
+github.setup            akiyosi zonvie ${commit}
+github.tarball_from     archive
+version                 0.3.26.20260702
+worksrcdir              ${name}-${commit}
+
+categories              editors
+maintainers             {bright.ai:pepe} openmaintainer
+license                 MIT
+description             A fast, feature-rich Neovim GUI built with Zig
+long_description        Zonvie is a fast, feature-rich Neovim GUI built with \
+                        Zig, native on macOS. It renders with Metal for \
+                        native performance and supports advanced features \
+                        such as SSH connections and devcontainer integration. \
+                        The Xcode project compiles the Zig core and links it \
+                        into the macOS app bundle.
+homepage                https://github.com/akiyosi/zonvie
+
+checksums               rmd160  782d16de3964c3a3748d35e39c5974e2d689f6b8 \
+                        sha256  15571b5c26a6f3e10d09405f4038c19097090da2b9b8161bd58e7fd24a4bf5ad \
+                        size    4457627
+
+# The Xcode build runs `zig build core` (Zig 0.16), which links against
+# freetype and harfbuzz for text shaping. Neovim is required at runtime.
+depends_build           port:zig
+depends_lib             port:freetype \
+                        port:harfbuzz
+depends_run             port:neovim
+
+# Homebrew on Apple Silicon ships arm64-only dylibs, so upstream builds a
+# single-arch (native) binary per runner rather than a universal link; match
+# that here by building for the host architecture only. build.type xcode makes
+# MacPorts whitelist the Xcode cache directories under the build user's home in
+# the build sandbox.
+use_configure           no
+build.type              xcode
+supported_archs         arm64 x86_64
+universal_variant       no
+
+# Zonvie requires macOS 15 (Sequoia) or later (LSMinimumSystemVersion 15.7).
+if {${os.major} < 24} {
+    known_fail yes
+    pre-fetch {
+        ui_error "${name} ${version} requires macOS 15 (Sequoia) or later."
+        return -code error "incompatible macOS version"
+    }
+}
+
+# Building the .app requires the full Xcode toolchain (Metal shader
+# compilation and the app target are not available with the Command Line
+# Tools alone). MacPorts forces DEVELOPER_DIR to the Command Line Tools during
+# the build, so recover the user's real Xcode selection (ignoring that
+# override) here.
+set xcode_developer_dir ""
+catch {set xcode_developer_dir [string trim \
+    [exec /usr/bin/env -u DEVELOPER_DIR /usr/bin/xcode-select -p]]}
+
+set xcconfig_file       ${workpath}/macports-searchpaths.xcconfig
+
+pre-build {
+    if {${xcode_developer_dir} eq "" ||
+        ![file exists ${xcode_developer_dir}/usr/bin/xcodebuild]} {
+        ui_error "${name} must be built with the full Xcode.app."
+        ui_error "Install Xcode, then run: sudo xcode-select -s /Applications/Xcode.app"
+        return -code error "Xcode is required"
+    }
+    # The Xcode project hardcodes Homebrew/usr-local search paths and never
+    # looks in MacPorts' ${prefix}. Inject the MacPorts freetype/harfbuzz header
+    # and library paths via an xcconfig (build settings with spaces cannot be
+    # passed as build.args, which MacPorts word-splits).
+    set fp [open ${xcconfig_file} w]
+    puts $fp "HEADER_SEARCH_PATHS = \$(inherited) ${prefix}/include ${prefix}/include/freetype2 ${prefix}/include/harfbuzz"
+    puts $fp "LIBRARY_SEARCH_PATHS = \$(inherited) ${prefix}/lib"
+    close $fp
+}
+
+# Xcode 26 ships the Metal compiler as a separately downloadable component that
+# cannot be fetched inside the build sandbox. If shader compilation fails with
+# "missing Metal Toolchain", install it once (network, one-time host setup):
+#   sudo xcodebuild -downloadComponent MetalToolchain
+
+set derived             ${workpath}/derived
+set app_build           ${derived}/Build/Products/Release/zonvie.app
+set app_dir             /Applications/MacPorts/zonvie.app
+
+# The Xcode run-script merges the Zig core with its glslang/SPIRV-Cross static
+# libraries into one archive using `libtool -static`. Apple's libtool cannot
+# re-index the object files produced by MacPorts' zig 0.16, so it silently
+# drops the glslang/SPIRV-Cross symbols and the app fails to link. `ld -r`
+# reads zig objects correctly, so rewrite the merge to combine via a
+# relocatable link (-keep_private_externs preserves SPIRV-Cross's private
+# extern C API symbols) and only then wrap the single object with libtool.
+post-patch {
+    set script ${worksrcpath}/macos/Scripts/build_zig_core.sh
+    set fh [open ${script} r]
+    set data [read ${fh}]
+    close ${fh}
+    set old {    xcrun libtool -static -o "${MERGED}" ${LIB_LIST}}
+    set new {    case "${ARCH}" in x64) LDARCH=x86_64 ;; *) LDARCH="${ARCH}" ;; esac
+    xcrun ld -r -arch "${LDARCH}" -platform_version macos "${MACOSX_DEPLOYMENT_TARGET:-15.0}" "${MACOSX_DEPLOYMENT_TARGET:-15.0}" -keep_private_externs -all_load -o "${MERGED%.a}.o" ${LIB_LIST}
+    xcrun libtool -static -o "${MERGED}" "${MERGED%.a}.o"}
+    if {[string first ${old} ${data}] < 0} {
+        return -code error "build_zig_core.sh merge command not found; upstream script changed"
+    }
+    set data [string map [list ${old} ${new}] ${data}]
+    set fh [open ${script} w]
+    puts -nonewline ${fh} ${data}
+    close ${fh}
+}
+
+# Compile the Release configuration for the host architecture, mirroring the
+# upstream release pipeline. The embedded `zig build core` step fetches Zig
+# package dependencies (zig-toml plus the vendored glslang/SPIRV sources) into
+# a cache under ${workpath}, so this port needs network access at build time
+# and cannot be built in trace mode (`port -t`). zig, freetype and harfbuzz
+# from ${prefix} are put on PATH/PKG_CONFIG_PATH for the Xcode run-script phase.
+# Run xcodebuild against the real Xcode, dropping the CLT SDKROOT that MacPorts
+# injects (which would otherwise force the wrong SDK).
+build.cmd               /usr/bin/env -u SDKROOT \
+                        DEVELOPER_DIR=${xcode_developer_dir} xcodebuild
+build.pre_args          build
+build.target
+build.args              -project macos/zonvie.xcodeproj \
+                        -scheme zonvie \
+                        -configuration Release \
+                        -derivedDataPath ${derived} \
+                        -destination platform=macOS,arch=${build_arch} \
+                        -xcconfig ${xcconfig_file} \
+                        ARCHS=${build_arch} \
+                        ONLY_ACTIVE_ARCH=YES \
+                        CODE_SIGNING_ALLOWED=NO \
+                        ENABLE_USER_SCRIPT_SANDBOXING=NO
+build.env               PATH=${prefix}/bin:/usr/bin:/bin:/usr/sbin:/sbin \
+                        PKG_CONFIG_PATH=${prefix}/lib/pkgconfig \
+                        ZIG_GLOBAL_CACHE_DIR=${workpath}/zig-global-cache \
+                        ZIG_LOCAL_CACHE_DIR=${workpath}/zig-local-cache
+
+destroot {
+    # GUI application bundle
+    xinstall -d -m 0755 ${destroot}/Applications/MacPorts
+    file copy ${app_build} ${destroot}${app_dir}
+
+    # CLI launcher.
+    #
+    # It must invoke the binary by its absolute bundle path, not a bare
+    # ${prefix}/bin symlink: through a symlink argv[0] is "zonvie" and
+    # Bundle.main resolves to ${prefix}/bin (no Resources), so Metal's
+    # makeDefaultLibrary() fails ("Failed to make default library") and the
+    # window never renders.
+    #
+    # zonvie's own fork/detach path chdir()s to $HOME before re-spawning
+    # (main.swift), so nvim's working directory ends up at $HOME instead of the
+    # shell's cwd. To keep the launch cwd AND still detach from the terminal,
+    # run with --nofork (which inherits cwd) and detach via nohup + background
+    # so the app survives the shell closing.
+    xinstall -d -m 0755 ${destroot}${prefix}/bin
+    set launcher ${destroot}${prefix}/bin/zonvie
+    set fh [open ${launcher} w]
+    puts ${fh} "#!/bin/sh"
+    puts ${fh} "nohup \"${app_dir}/Contents/MacOS/zonvie\" --nofork \"\$@\" >/dev/null 2>&1 &"
+    close ${fh}
+    file attributes ${launcher} -permissions 0755
+}
+
+notes "
+    Zonvie is installed to:
+    * /Applications/MacPorts/zonvie.app
+
+    The command line launcher is available as:
+    * ${prefix}/bin/zonvie
+
+    Create the default config and edit it at ~/.config/zonvie/config.toml:
+    * zonvie --install
+
+    See https://github.com/akiyosi/zonvie for usage and configuration.
+"

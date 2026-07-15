@@ -1,0 +1,246 @@
+# -*- coding: utf-8; mode: tcl; tab-width: 4; indent-tabs-mode: nil; c-basic-offset: 4 -*- vim:fenc=utf-8:ft=tcl:et:sw=4:ts=4:sts=4
+
+# Based on https://github.com/0x1b2c/homebrew-veil/blob/main/Casks/veil.rb
+# but built from source (the cask installs a prebuilt app; this port compiles
+# the Xcode project the same way upstream CI does).
+PortSystem              1.0
+PortGroup               github 1.0
+
+github.setup            0x1b2c Veil 0.7 v
+github.tarball_from     archive
+
+# Upstream project/app is "Veil"; the MacPorts port is lowercase.
+name                    veil
+
+categories              editors
+maintainers             {bright.ai:pepe} openmaintainer
+license                 MIT
+description             A Neovim GUI built for efficiency, not for cool
+long_description        Veil is a native macOS GUI wrapper for Neovim that \
+                        emphasizes efficiency and minimalism. It brings the \
+                        MacVim workflow of multiple independent windows with \
+                        tab switching to Neovim while keeping instant startup \
+                        times and fast Metal-based rendering.
+homepage                https://github.com/0x1b2c/Veil
+
+checksums               rmd160  0e09074715a200fa44395ccb7638206ab47371da \
+                        sha256  cece2ae3a5eed5a16468f6a47e73e681267c1c9311851812087fa3b8981d66f7 \
+                        size    1240755
+
+# Neovim is required at runtime; Veil launches and drives an nvim process.
+depends_run             port:neovim
+
+# Built as a universal (x86_64 + arm64) app via xcodebuild. build.type xcode
+# makes MacPorts whitelist the Xcode/SwiftPM cache directories under the build
+# user's home in the build sandbox (Caches, org.swift.swiftpm, .swiftpm), which
+# xcodebuild writes to via the passwd home regardless of $HOME.
+use_configure           no
+build.type              xcode
+supported_archs         arm64 x86_64
+universal_variant       no
+
+# Veil requires macOS 14 (Sonoma) or later (LSMinimumSystemVersion 14.6),
+# matching the Homebrew cask's `depends_on macos: ">= :sonoma"`.
+if {${os.major} < 23} {
+    known_fail yes
+    pre-fetch {
+        ui_error "${name} ${version} requires macOS 14 (Sonoma) or later."
+        return -code error "incompatible macOS version"
+    }
+}
+
+# Building the .app requires the full Xcode toolchain (the Command Line Tools
+# alone are not enough for an app target / Metal shader compilation). MacPorts
+# forces DEVELOPER_DIR to the Command Line Tools during the build, so recover
+# the user's real Xcode selection (ignoring that override) here.
+set xcode_developer_dir ""
+catch {set xcode_developer_dir [string trim \
+    [exec /usr/bin/env -u DEVELOPER_DIR /usr/bin/xcode-select -p]]}
+
+pre-build {
+    if {${xcode_developer_dir} eq "" ||
+        ![file exists ${xcode_developer_dir}/usr/bin/xcodebuild]} {
+        ui_error "${name} must be built with the full Xcode.app."
+        ui_error "Install Xcode, then run: sudo xcode-select -s /Applications/Xcode.app"
+        return -code error "Xcode is required"
+    }
+    # SwiftPM sandboxes package-manifest evaluation with its own sandbox-exec,
+    # which macOS refuses to nest inside MacPorts' build sandbox. The only knob
+    # is the Xcode user default IDEPackageSupportDisableManifestSandbox, read by
+    # xcodebuild from the build account's (${macportsuser}) real home via
+    # cfprefsd. It cannot be set from here (the build sandbox forbids writing
+    # that account's Library/Preferences), so require it as a one-time step.
+    if {[catch {exec /usr/bin/sudo -n -u ${macportsuser} /usr/bin/defaults read \
+            com.apple.dt.Xcode IDEPackageSupportDisableManifestSandbox} v] || \
+            [string trim ${v}] ne "1"} {
+        ui_warn "If the build fails with 'sandbox_apply: Operation not permitted'"
+        ui_warn "during 'Resolve Package Graph', SwiftPM's manifest sandbox must"
+        ui_warn "be disabled for the MacPorts build user. Run this once, rebuild:"
+        ui_warn "    sudo -u ${macportsuser} defaults write com.apple.dt.Xcode \\"
+        ui_warn "        IDEPackageSupportDisableManifestSandbox -bool YES"
+    }
+}
+
+# Xcode 26 ships the Metal compiler as a separately downloadable component that
+# cannot be fetched inside the build sandbox. If shader compilation fails with
+# "missing Metal Toolchain", install it once (network, one-time host setup):
+#   sudo xcodebuild -downloadComponent MetalToolchain
+
+set app_build           ${workpath}/derived/Build/Products/Release/Veil.app
+set app_dir             /Applications/MacPorts/Veil.app
+
+# VeilCore uses a SwiftPM build-tool plugin (BuildVersionPlugin) to generate a
+# BuildVersion.swift from `git describe`. Build-tool plugin execution runs in
+# its own sandbox-exec, which macOS cannot nest inside MacPorts' build sandbox,
+# and there is no xcodebuild/user-default knob to disable it. The plugin only
+# emits a version string, so replace it with a static BuildVersion.swift and
+# drop the plugin from the package manifest.
+post-patch {
+    set pkgdir ${worksrcpath}/Packages/VeilCore
+    set manifest ${pkgdir}/Package.swift
+    set fh [open ${manifest} r]
+    set data [read ${fh}]
+    close ${fh}
+    set target_old {        .target(
+            name: "VeilCore",
+            plugins: [.plugin(name: "BuildVersionPlugin")]
+        ),}
+    set target_new {        .target(
+            name: "VeilCore"
+        ),}
+    set plugin_old {        .plugin(
+            name: "BuildVersionPlugin",
+            capability: .buildTool()
+        ),
+}
+    if {[string first ${target_old} ${data}] < 0 ||
+        [string first ${plugin_old} ${data}] < 0} {
+        return -code error "VeilCore Package.swift layout changed; update the BuildVersionPlugin patch"
+    }
+    set data [string map [list ${target_old} ${target_new} ${plugin_old} ""] ${data}]
+    set fh [open ${manifest} w]
+    puts -nonewline ${fh} ${data}
+    close ${fh}
+
+    # Static replacement for the plugin-generated BuildVersion.swift.
+    set fh [open ${pkgdir}/Sources/VeilCore/BuildVersion.swift w]
+    puts ${fh} "public enum BuildVersion {"
+    puts ${fh} "    public static let version = \"${version}\""
+    puts ${fh} "    public static let displayVersion = \"v${version}\""
+    puts ${fh} "}"
+    close ${fh}
+
+    # The Veil app target's Run Script phase builds the bundled `veil` CLI with
+    # `swift build`, which sandboxes SwiftPM manifest evaluation and thus fails
+    # to nest inside MacPorts' build sandbox. `swift build` (unlike xcodebuild)
+    # honors --disable-sandbox, so inject it.
+    set cli_script ${worksrcpath}/Tools/build-bundled-cli.sh
+    set fh [open ${cli_script} r]
+    set cdata [read ${fh}]
+    close ${fh}
+    # Match the command (ending in a line-continuation backslash) regardless of
+    # indentation; there are two invocations (single- and multi-arch branches).
+    set sb_old "swift build \\"
+    if {[string first ${sb_old} ${cdata}] < 0} {
+        return -code error "build-bundled-cli.sh layout changed; update the --disable-sandbox patch"
+    }
+    set cdata [string map [list ${sb_old} "swift build --disable-sandbox \\"] ${cdata}]
+    set fh [open ${cli_script} w]
+    puts -nonewline ${fh} ${cdata}
+    close ${fh}
+
+    # CLI window behavior: stock `veil`, when Veil is already running, only
+    # forwards a request if files were passed; a bare `veil` just activates the
+    # existing window. The app already opens a NEW window per request and honors
+    # the forwarded env's PWD as nvim's cwd (WindowDocument), so always forward
+    # the request. Result: every `veil` opens a new window in the shell's pwd
+    # (and reopens one after all windows were closed).
+    set cli ${worksrcpath}/Packages/veil/Sources/veil/VeilCLI.swift
+    set fh [open ${cli} r]
+    set vdata [read ${fh}]
+    close ${fh}
+    set cli_old {            if hasOpenRequest {
+                exit(
+                    sendOpenRequest(to: running, arguments: arguments, nvimAppName: nvimAppName)
+                        ? 0 : 1)
+            }
+            running.activate(options: [.activateAllWindows])
+            exit(0)}
+    set cli_new {            _ = hasOpenRequest  // MacPorts: always open a new window in the shell's pwd
+            exit(
+                sendOpenRequest(to: running, arguments: arguments, nvimAppName: nvimAppName)
+                    ? 0 : 1)}
+    if {[string first ${cli_old} ${vdata}] < 0} {
+        return -code error "VeilCLI.swift running-app block changed; update the new-window patch"
+    }
+    set vdata [string map [list ${cli_old} ${cli_new}] ${vdata}]
+    set fh [open ${cli} w]
+    puts -nonewline ${fh} ${vdata}
+    close ${fh}
+}
+
+# Compile the Release configuration exactly as upstream CI does. SwiftPM
+# dependency clones and Xcode DerivedData are redirected under ${workpath}.
+# Resolving the remote SwiftPM packages (MessagePack.swift, swift-toml)
+# requires network access, so this port cannot be built in trace mode
+# (`port -t`). The env wrapper points xcodebuild at the real Xcode and drops
+# the CLT SDKROOT that MacPorts injects (which would force the wrong SDK).
+#
+# macOS forbids nesting a sandbox inside the one MacPorts already applies, so
+# every sandbox xcodebuild would spawn must be disabled:
+#   * ENABLE_USER_SCRIPT_SANDBOXING=NO  - run-script phases
+#   * DISABLE_TASK_SANDBOXING=YES        - build-system tasks
+#   * the IDEPackageSupportDisableManifestSandbox default (pre-build) - SwiftPM
+#                                          manifest evaluation
+#   * the BuildVersionPlugin build-tool plugin, whose execution sandbox has no
+#     off-switch, is removed in post-patch above.
+build.cmd               /usr/bin/env -u SDKROOT \
+                        DEVELOPER_DIR=${xcode_developer_dir} xcodebuild
+build.pre_args          build
+build.target
+build.args              -project Veil.xcodeproj \
+                        -scheme Veil \
+                        -configuration Release \
+                        -derivedDataPath ${workpath}/derived \
+                        -clonedSourcePackagesDirPath ${workpath}/spm \
+                        -destination generic/platform=macOS \
+                        CODE_SIGNING_ALLOWED=NO \
+                        ONLY_ACTIVE_ARCH=NO \
+                        CLANG_ENABLE_CODE_COVERAGE=NO \
+                        CLANG_COVERAGE_MAPPING=NO \
+                        ENABLE_USER_SCRIPT_SANDBOXING=NO \
+                        DISABLE_TASK_SANDBOXING=YES
+
+# Match the standard Homebrew cask (the "polite" variant): strip LSHandlerRank
+# from the app's document types so Veil is offered under "Open With" but does
+# not claim default file associations. Upstream's own release does this to the
+# shipped Veil.zip; the raw build would otherwise behave like veil-default-editor.
+post-build {
+    system -W ${worksrcpath} "/bin/sh Tools/make-bundle-polite.sh ${app_build}"
+}
+
+destroot {
+    # GUI application bundle
+    xinstall -d -m 0755 ${destroot}/Applications/MacPorts
+    file copy ${app_build} ${destroot}${app_dir}
+
+    # CLI entry points shipped inside the bundle. Mirrors the Homebrew cask's
+    # `binary` stanza (veil) and postflight symlinks (gvim, gvimdiff). MacPorts
+    # reports an activation conflict if another port (e.g. MacVim) already owns
+    # gvim/gvimdiff, which is the desired behavior.
+    xinstall -d -m 0755 ${destroot}${prefix}/bin
+    foreach cli {veil gvim gvimdiff} {
+        ln -s ${app_dir}/Contents/bin/${cli} ${destroot}${prefix}/bin/${cli}
+    }
+}
+
+notes "
+    Veil is installed to:
+    * /Applications/MacPorts/Veil.app
+
+    Command line launchers are available as:
+    * ${prefix}/bin/veil, ${prefix}/bin/gvim, ${prefix}/bin/gvimdiff
+
+    Configure Veil via ~/.config/veil/veil.toml. See KEYBOARD.md and FONT.md at
+    https://github.com/0x1b2c/Veil for keybinding and font options.
+"
